@@ -1,14 +1,29 @@
 #include "Arduino.h"
-#include "SPI.h"
+// #include "SPI.h"
 #include "RF24.h"
 #include "Servo.h"
 
-/*-----( Declare Constants and Pin Numbers )-----*/
-#define  CE_PIN  7   // The pins to be used for CE and SN
-#define  CSN_PIN 8
 
-#define servo_yaw_pin 2
-#define servo_pitch_pin 3
+#define DEBUG
+#define STM32F1
+// #define ARDUINO_NANO
+
+/*-----( Declare Constants and Pin Numbers )-----*/
+#ifdef STM32F1 // stm32 pins
+// The pins to be used for CE and SN
+    #define  CE_PIN  PB1
+    #define  CSN_PIN PB0
+// The pins to be used servo pins
+    #define servo_yaw_pin PA1
+    #define servo_pitch_pin PA0
+#elif #defined ARDUINO_NANO // arduino pins
+// The pins to be used for CE and SN
+    #define  CE_PIN  7   
+    #define  CSN_PIN 8
+// The pins to be used servo pins
+    #define servo_yaw_pin 2
+    #define servo_pitch_pin 3
+#endif
 
 Servo servo_yaw;
 Servo servo_pitch;
@@ -19,6 +34,12 @@ RF24 radio(CE_PIN, CSN_PIN);
 
 /*-----( Declare Variables for RF24 pipes )-----*/
 byte addresses[][6] = {"1Node", "2Node"}; // These will be the names of the "Pipes"
+
+#ifdef DEBUG
+uint32_t counter=0;
+float_t counter_float=0;
+#endif
+
 
 /*-----( Declare Variables for gimbal servos)-----*/
 
@@ -56,32 +77,36 @@ void setup()
 {
 // Add your initialization code here
 
-	Serial.begin(115200);  // MUST reset the Serial Monitor to 115200 (lower right of window )
-	  // NOTE: The "F" in the print statements means "unchangable data; save in Flash Memory to conserve SRAM"
-	  Serial.println(F("YourDuino.com Example: Send joystick data by nRF24L01 radio to another Arduino"));
+    Serial.begin(115200);  // MUST reset the Serial Monitor to 115200 (lower right of window )
+    // NOTE: The "F" in the print statements means "unchangable data; save in Flash Memory to conserve SRAM"
+    Serial.println(F("YourDuino.com Example: Send joystick data by nRF24L01 radio to another Arduino"));
 
-	  /*-----( RF24 Initialize and preferences )-----*/
-	  radio.begin();          // Initialize the nRF24L01 Radio
-	  radio.setChannel(108);  // Above most WiFi frequencies
-	  radio.setDataRate(RF24_250KBPS); // Fast enough.. Better range
+    /*-----( RF24 Initialize and preferences )-----*/
+    radio.begin();          // Initialize the nRF24L01 Radio
+    radio.setChannel(108);  // Above most WiFi frequencies
+    radio.setDataRate(RF24_250KBPS); // Fast enough.. Better range
 
-	  // Set the Power Amplifier Level low to prevent power supply related issues since this is a
-	  // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
-	  // PALevelcan be one of four levels: RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH and RF24_PA_MAX
-	  radio.setPALevel(RF24_PA_MIN);
+    // Set the Power Amplifier Level low to prevent power supply related issues since this is a
+    // getting_started sketch, and the likelihood of close proximity of the devices. RF24_PA_MAX is default.
+    // PALevelcan be one of four levels: RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH and RF24_PA_MAX
+    radio.setPALevel(RF24_PA_MIN);
 
-	 radio.enableAckPayload();
-	 radio.enableDynamicAck();
-	 radio.setAutoAck(true);
+    radio.enableAckPayload();
+    radio.enableDynamicAck();
+    radio.setAutoAck(true);
 
-	 radio.openReadingPipe(1, addresses[0]);
-	 radio.startListening();
+    radio.openReadingPipe(1, addresses[0]);
+    radio.startListening();
 
-	 servo_yaw.attach(servo_yaw_pin);//links the yaw servo pin to the library
-	 servo_pitch.attach(servo_pitch_pin);//links the pitch servo pin to the library
+    servo_yaw.attach(servo_yaw_pin);//links the yaw servo pin to the library
+    servo_pitch.attach(servo_pitch_pin);//links the pitch servo pin to the library
 
-	 servo_yaw.write(90);
-	 servo_pitch.write(90);
+    servo_yaw.write(90);
+    servo_pitch.write(90);
+
+    while(radio.isChipConnected() == false)
+        Serial.println("chip is NOT connected");
+
 }
 
 // The loop function is called in an endless loop
@@ -89,38 +114,47 @@ void loop()
 {
 //Add your repeated code here
 
-  if (radio.available()) // if there is data ready to be retrieved from the receive pipe
+    if (radio.available()) // if there is data ready to be retrieved from the receive pipe
 	{
-	  radio.writeAckPayload(1, &myAck, sizeof(myAck));	//send the data back as acknowledge
-	  radio.read( &myData, sizeof(myData) );         	// Get the data
-	// END radio available
-
-		delayMicroseconds(30);
-		if(Serial)
+        radio.writeAckPayload(1, &myAck, sizeof(myAck));	//send the data back as acknowledge
+	    radio.read( &myData, sizeof(myData) );         	// Get the data
+	
+        delayMicroseconds(30);
+		#ifdef DEBUG
+        if(Serial)
 		{
 			/*-----( print the received packet data )-----*/
 			Serial.print(F("Packet Received - Sent response "));  // Print the received packet data
 			Serial.print(myData._micros);
-			Serial.print(F("uS\n Yaw= "));//x state
+            Serial.print(F("uS\n Yaw= "));//x state
 			Serial.print(myData.yaw);
 			Serial.print(F("\t Pitch= "));//y state
 			Serial.print(myData.pitch);
 			Serial.println();
 			if ( myData.switchOn == 1)//switch state
 			{
-			  Serial.println(F("\t Switch ON"));
+                Serial.println(F("\t Switch ON"));
 			}
 			else
-			{
-			  Serial.println(F("\t Switch OFF"));
+            {
+                Serial.println(F("\t Switch OFF"));
 			}
 		}
+        #endif
 	myAck.check = 123;
-	}// END radio available
+    }// END radio available
 
-  servo_yaw.write(myData.yaw);
-  servo_pitch.write(myData.pitch);
-
+    servo_yaw.write(myData.yaw);
+    servo_pitch.write(myData.pitch);
+    
+    
+    #ifdef DEBUG
+    // blink LED to indicate activity
+    counter = micros() - counter;
+    counter_float = (float)counter/1000000; //in seconds
+    Serial.printf("operating in %d Hz",(uint32_t)(1/counter_float));
+    // Serial.printf("operating in %d",(counter));
+    Serial.println();
+    counter = micros();
+    #endif
 }
-
-
